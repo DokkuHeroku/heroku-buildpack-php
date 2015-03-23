@@ -54,7 +54,7 @@ curl --silent --max-time 60 --location "$APACHE_URL" | tar xz
 PHP_URL="http://6c5fc574d4fc392b68d4-ae37d318202b9c92edc4fb8ce3d0ce95.r45.cf2.rackcdn.com/php-5.3.28.tar.gz"
 echo "-----> Bundling PHP version $PHP_VERSION"
 curl --silent --max-time 60 --location "$PHP_URL" | tar xz
-/app/php/bin/php -m | grep mysql
+# /app/php/bin/php -m | grep mysql
 # update config files
 cp $LP_DIR/conf/httpd.conf $APACHE_PATH/conf
 cp $LP_DIR/conf/php.ini php
