@@ -65,6 +65,8 @@ ln -s /app/php/bin/php bin/php
 
 cat >>boot.sh <<EOF
 
+sh /app/www/.env >> /dev/null
+
 for var in \`env|cut -f1 -d=\`; do
   echo "PassEnv \$var" >> /app/apache/conf/httpd.conf;
 done
@@ -72,9 +74,21 @@ touch /app/apache/logs/error_log
 touch /app/apache/logs/access_log
 tail -F /app/apache/logs/error_log &
 tail -F /app/apache/logs/access_log &
-export LD_LIBRARY_PATH=/app/php/ext
+export LD_LIBRARY_PATH=/app/php/lib/php
 export PHP_INI_SCAN_DIR=/app/www
-echo "Launching apache"
+php -m
+if [ -f /app/www/conf/httpd.conf.php ]; then
+  env | /app/php/bin/php /app/www/conf/httpd.conf.php > /app/httpd.conf
+fi
+if [ -f /app/www/conf/Settings.conf.php ]; then
+  env | /app/php/bin/php /app/www/conf/Settings.conf.php > /app/www/settings/Settings.php
+fi
+if [ -f /app/www/conf/institutions/demo_InstitutionURS.conf.php ]; then
+  env | /app/php/bin/php /app/www/conf/institutions/demo_InstitutionURS.conf.php > /app/www/settings/institutions/demo_InstitutionURS.php
+fi
+env
+cat /app/www/settings/Settings.php | grep DATABASE
+echo "Launching apache $PORT"
 exec /app/apache/bin/httpd -DNO_DETACH
 EOF
 
