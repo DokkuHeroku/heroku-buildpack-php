@@ -1,0 +1,98 @@
+#!/usr/bin/env bash
+# bin/compile <build-dir> <cache-dir>
+
+# fail fast
+set -e
+
+# Heroku Revision.
+#
+# Affixed to all vendored binary output to represent changes to the
+# compilation environment without a change to the upstream version,
+# e.g. PHP 5.3.27 without, and then subsequently with, libmcrypt.
+heroku_rev='-2'
+
+# config
+MCRYPT_VERSION="2.5.8"
+APACHE_VERSION="2.2.27"
+APACHE_PATH="apache"
+PHP_VERSION="5.3.28"
+PHP_PATH="php"
+
+BIN_DIR=$(dirname $0)
+BUILD_DIR=$1
+CACHE_DIR=$2
+LP_DIR=`cd $(dirname $0); cd ..; pwd`
+
+echo "$BIN_DIR $BUILD_DIR $CACHE_DIR"
+
+# include .files when moving things around
+shopt -s dotglob
+
+cd $BUILD_DIR
+
+# move app things to www
+mkdir -p $CACHE_DIR/www
+mv * $CACHE_DIR/www
+mv $CACHE_DIR/www .
+
+# keep Procfile
+if [ -f www/Procfile ]; then
+  mv www/Procfile .
+fi
+
+# MCRYPT_URL="https://heroku-buildpack-php.s3.amazonaws.com/mcrypt-""$MCRYPT_VERSION""$heroku_rev"".tar.gz"
+MCRYPT_URL="http://6c5fc574d4fc392b68d4-ae37d318202b9c92edc4fb8ce3d0ce95.r45.cf2.rackcdn.com/mcrypt-2.5.8.tar.gz"
+echo "-----> Bundling mcrypt version $MCRYPT_VERSION"
+curl --silent --max-time 60 --location "$MCRYPT_URL" | tar xz
+
+# APACHE_URL="https://heroku-buildpack-php.s3.amazonaws.com/apache-""$APACHE_VERSION""$heroku_rev"".tar.gz"
+APACHE_URL="http://6c5fc574d4fc392b68d4-ae37d318202b9c92edc4fb8ce3d0ce95.r45.cf2.rackcdn.com/apache-2.2.27.tar.gz"
+echo "-----> Bundling Apache version $APACHE_VERSION"
+curl --silent --max-time 60 --location "$APACHE_URL" | tar xz
+
+# PHP_URL="https://heroku-buildpack-php.s3.amazonaws.com/php-$PHP_VERSION""$heroku_rev"".tar.gz"
+PHP_URL="http://6c5fc574d4fc392b68d4-ae37d318202b9c92edc4fb8ce3d0ce95.r45.cf2.rackcdn.com/php-5.3.28.tar.gz"
+echo "-----> Bundling PHP version $PHP_VERSION"
+curl --silent --max-time 60 --location "$PHP_URL" | tar xz
+/app/php/bin/php -m | grep mysql
+# update config files
+cp $LP_DIR/conf/httpd.conf $APACHE_PATH/conf
+cp $LP_DIR/conf/php.ini php
+
+# make php available on bin
+mkdir -p bin
+ln -s /app/php/bin/php bin/php
+
+cat >>boot.sh <<EOF
+
+sh /app/www/.env >> /dev/null
+
+for var in \`env|cut -f1 -d=\`; do
+  echo "PassEnv \$var" >> /app/apache/conf/httpd.conf;
+done
+touch /app/apache/logs/error_log
+touch /app/apache/logs/access_log
+tail -F /app/apache/logs/error_log &
+tail -F /app/apache/logs/access_log &
+export LD_LIBRARY_PATH=/app/php/lib/php
+export PHP_INI_SCAN_DIR=/app/www
+php -m
+if [ -f /app/www/conf/httpd.conf.php ]; then
+  env | /app/php/bin/php /app/www/conf/httpd.conf.php > /app/httpd.conf
+fi
+if [ -f /app/www/conf/Settings.conf.php ]; then
+  env | /app/php/bin/php /app/www/conf/Settings.conf.php > /app/www/settings/Settings.php
+fi
+if [ -f /app/www/conf/institutions/demo_InstitutionURS.conf.php ]; then
+  env | /app/php/bin/php /app/www/conf/institutions/demo_InstitutionURS.conf.php > /app/www/settings/institutions/demo_InstitutionURS.php
+fi
+env
+cat /app/www/settings/Settings.php | grep DATABASE
+echo "Launching apache $PORT"
+exec /app/apache/bin/httpd -DNO_DETACH
+EOF
+
+chmod +x boot.sh
+
+# clean the cache
+rm -rf $CACHE_DIR
